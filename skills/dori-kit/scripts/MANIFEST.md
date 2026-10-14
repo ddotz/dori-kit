@@ -33,3 +33,6 @@ Every file here is `shared`: generic scripts that read all personal values from 
 - `cfg.sh` - shared: shell helper for config.json (sourced by .sh scripts)
 - `setup.ts` - shared: interactive installer for a new layer (~/.<layer>)
 - `SETUP.md` - shared: how to run setup.ts
+- `aside-window.ts` - shared: one dedicated minimized Aside window for all automations (tabs open/close by id, never focus)
+- `session-keeper.ts` - shared: session keeper runner (check/touch/relogin adapters, lock, alert/pause policy, status lines)
+- `session-status.sh` - shared: nightly hook wrapper printing session-keeper status
