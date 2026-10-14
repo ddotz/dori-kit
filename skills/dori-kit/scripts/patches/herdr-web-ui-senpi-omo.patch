@@ -1,0 +1,14 @@
+--- a/server/omo.ts
++++ b/server/omo.ts
+@@ -16,7 +16,10 @@
+  */
+ export function isOmoProcess(argv: readonly string[]): boolean {
+   const program = JS_RUNTIME.test(argv[0] ?? "") ? argv.slice(1).find((word) => !word.startsWith("-")) : argv[0];
+-  return program !== undefined && !program.includes(":") && OMO_PROCESS.test(program);
++  if (program !== undefined && !program.includes(":") && OMO_PROCESS.test(program)) return true;
++  // local patch (senpi-omo): omo launched as senpi with the omo-ai plugin as its extension
++  return program !== undefined && /\/@code-yeongyu\/senpi\//.test(program) &&
++    argv.some((word, at) => argv[at - 1] === "--extension" && !word.includes(":") && /\/omo-ai\//.test(word));
+ }
+ 
+ export interface OmoCandidate { path: string; id: string; createdAt: number | null }

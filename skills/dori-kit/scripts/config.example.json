@@ -1,0 +1,32 @@
+{
+  "_comment": "Copy to config.json and fill in your own values (setup.ts writes it for you). Paths may start with ~/ (expanded by config.ts).",
+  "layer": "<layer name: scripts live in ~/.<layer>, launchd labels dev.<layer>.*>",
+  "identity": {
+    "name": "<bot display name>",
+    "avatar": "~/.<layer>/omo-icon.png",
+    "doc": "~/.<layer>/identity/IDENTITY.md"
+  },
+  "discord": {
+    "guild": "<guild id>",
+    "channels": {
+      "chat": "<main chat channel id>",
+      "alert": "<alert channel id>",
+      "brief": "<daily brief channel id>",
+      "worklog": "<worklog channel id>"
+    },
+    "owner_id": "<your Discord user id>",
+    "bot_user_id": "<bot user id>",
+    "bot_name": "<agent-discordbot bot id key>"
+  },
+  "mail": {
+    "google": "<you>@gmail.com"
+  },
+  "github_owner": "<github user or org>",
+  "agent_cwd": "~/<agent working dir>",
+  "projects": {
+    "herdr_web_ui": "~/Code/herdr-web-ui"
+  },
+  "backup_repo": "<layer>-backup",
+  "mail_noise": [],
+  "nightly_hooks": []
+}

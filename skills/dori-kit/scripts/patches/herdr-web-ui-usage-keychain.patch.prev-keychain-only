@@ -1,0 +1,90 @@
+diff --git a/server/usage.ts b/server/usage.ts
+index 794356f..45a29ba 100644
+--- a/server/usage.ts
++++ b/server/usage.ts
+@@ -17,8 +17,9 @@
+ 
+ import { Database } from "bun:sqlite";
+ import { createHash } from "node:crypto";
+-import { closeSync, openSync, readdirSync, readSync } from "node:fs";
+-import { homedir } from "node:os";
++import { closeSync, mkdtempSync, openSync, readdirSync, readSync, rmSync, writeFileSync } from "node:fs";
++import { open } from "node:fs/promises";
++import { homedir, tmpdir } from "node:os";
+ import { join } from "node:path";
+ import type { ProviderUsage, UsageProblem, UsageProviderId, UsageReport, UsageWindow } from "../shared/protocol.ts";
+ import { jsonResponse } from "./http.ts";
+@@ -282,7 +283,8 @@ const claude: UsageProvider = {
+       const keychain = await fromKeychain(ctx, home.service, user ? [user, undefined] : [undefined], claudeSignIn);
+       if (keychain && keychain !== "locked") return keychainFound(keychain, home.source, account);
+       const file = claudeSignIn(readText(join(home.dir, ".credentials.json")));
+-      return file ? [{ ...file, account, source: home.source }] : keychainFound(keychain, home.source, account);
++      if (file) return [{ ...file, account, source: home.source }];
++      return keychainFound(keychain, home.source, account);
+     }));
+     return found.flat();
+   },
+@@ -643,6 +645,12 @@ async function readKeychain(service: string, account?: string): Promise<Keychain
+     if (code === 0) return { status: "found", value: output.trim() };
+     // 44: errSecItemNotFound. Anything else found an item it could not read (36: a locked keychain).
+     if (code === 44 && !timedOut) return { status: "missing" };
++    // 36 without a prompt: this server runs outside the login (Aqua) session - started over SSH or by a
++    // detached multiplexer - where the login keychain refuses any read. Ask from the login session instead.
++    if (code === 36 && !timedOut) {
++      const gui = await readKeychainInLoginSession(service, account);
++      if (gui !== null) return { status: "found", value: gui };
++    }
+     if (timedOut) promptedServices.add(service);
+     return { status: "locked" };
+   } catch {
+@@ -652,6 +660,50 @@ async function readKeychain(service: string, account?: string): Promise<Keychain
+   }
+ }
+ 
++const xml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
++
++/**
++ * Reads a keychain item through a one-shot launchd job in the user's gui/<uid> domain, which runs in the
++ * login session where the keychain is unlocked. The value comes back through a FIFO, never a file on disk.
++ * null when not on macOS, the job cannot be loaded, or nothing came back in time.
++ */
++async function readKeychainInLoginSession(service: string, account?: string): Promise<string | null> {
++  if (process.platform !== "darwin" || typeof process.getuid !== "function") return null;
++  const domain = `gui/${process.getuid()}`;
++  const label = `dev.herdr-web-ui.keychain-read.${process.pid}.${Date.now()}`;
++  const dir = mkdtempSync(join(tmpdir(), "herdr-web-ui-keychain-"));
++  const fifo = join(dir, "out");
++  const plist = join(dir, "job.plist");
++  try {
++    if (Bun.spawnSync(["mkfifo", "-m", "600", fifo]).exitCode !== 0) return null;
++    const args = ["/usr/bin/security", "find-generic-password", "-s", service, ...(account ? ["-a", account] : []), "-w"];
++    writeFileSync(plist, `<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<plist version="1.0"><dict><key>Label</key><string>${xml(label)}</string><key>ProgramArguments</key><array>${args.map((a) => `<string>${xml(a)}</string>`).join("")}</array><key>StandardOutPath</key><string>${xml(fifo)}</string><key>StandardErrorPath</key><string>/dev/null</string><key>RunAtLoad</key><true/></dict></plist>
++`, { mode: 0o600 });
++    // open for reading before the job starts; the open completes when the job opens its stdout
++    const reading = open(fifo, "r").then(async (handle) => {
++      try { return (await handle.readFile("utf8")).trim(); } finally { await handle.close(); }
++    });
++    const load = Bun.spawnSync(["launchctl", "bootstrap", domain, plist], { stdout: "ignore", stderr: "ignore" });
++    if (load.exitCode !== 0) {
++      closeSync(openSync(fifo, "r+")); // releases the pending reader
++      await reading.catch(() => "");
++      return null;
++    }
++    let timer: ReturnType<typeof setTimeout> | undefined;
++    const timeout = new Promise<string>((resolve) => { timer = setTimeout(() => { closeSync(openSync(fifo, "r+")); resolve(""); }, COMMAND_TIMEOUT_MS); });
++    const value = await Promise.race([reading.catch(() => ""), timeout]);
++    clearTimeout(timer);
++    return value ? value : null;
++  } catch {
++    return null;
++  } finally {
++    Bun.spawnSync(["launchctl", "bootout", `${domain}/${label}`], { stdout: "ignore", stderr: "ignore" });
++    rmSync(dir, { recursive: true, force: true });
++  }
++}
++
+ export async function runCommand(argv: string[]): Promise<string | null> {
+   if (!Bun.which(argv[0]!)) return null;
+   try {

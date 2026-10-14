@@ -1,0 +1,13 @@
+--- a/server/usage.ts
++++ b/server/usage.ts
+@@ -281,8 +281,9 @@
+     const found = await Promise.all(claudeHomes(ctx).map(async (home) => {
+       const account = claudeAccount(home.config);
+       const keychain = await fromKeychain(ctx, home.service, user ? [user, undefined] : [undefined], claudeSignIn);
+-      if (keychain && keychain !== "locked") return keychainFound(keychain, home.source, account);
+       const file = claudeSignIn(readText(join(home.dir, ".credentials.json")));
++      // local patch (fresher-claude-token): the CLI may refresh only the file, leaving a stale keychain item
++      if (keychain && keychain !== "locked" && !(file && (file.expiresAt ?? 0) > (keychain.expiresAt ?? 0))) return keychainFound(keychain, home.source, account);
+       return file ? [{ ...file, account, source: home.source }] : keychainFound(keychain, home.source, account);
+     }));
+     return found.flat();
