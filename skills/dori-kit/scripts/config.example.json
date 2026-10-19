@@ -28,5 +28,6 @@
   },
   "backup_repo": "<layer>-backup",
   "mail_noise": [],
-  "nightly_hooks": []
+  "nightly_hooks": [],
+  "browser_engine": "aside"
 }
